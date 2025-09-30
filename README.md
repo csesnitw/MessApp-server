@@ -25,9 +25,8 @@ npm install express mongoose dotenv cors google-auth-library
 2. Create `.env` file:
 ```env
 PORT=5000
-MONGODB_URI=mongodb://localhost:27017/student-management
+MONGODB_URI=mongodb:"mongodb://localhost:27017/mess"
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-CLIENT_URL=http://localhost:3000
 ```
 
 3. Run server:
@@ -48,4 +47,5 @@ npm start
 ## Authentication
 
 All routes require `Authorization: Bearer <google-id-token>` header. Server verifies token with Google on each request (stateless).
+
 
