@@ -9,23 +9,15 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-const messCardRoutes = require("./routes/messCardRoutes");
-app.use("/messcard", messCardRoutes);
-
-
-
+// sample route
 app.get("/", (req, res) => {
   res.send("Backend is running");
 });
 
-
-mongoose.connect(process.env.MONGODB_URI)
-
+// connect DB + start server
+mongoose
+  .connect(process.env.MONGO_URI || "mongodb://localhost:27017/mess")
   .then(() => {
-    console.log("MongoDB connected");
-    app.listen(5000, () => console.log("✅ Server running on port 5000"));
+    app.listen(5000, () => console.log("Server running on port 5000"));
   })
-  .catch(err => console.error(err));
-
-
-
+  .catch((err) => console.log(err));
