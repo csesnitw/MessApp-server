@@ -12,7 +12,7 @@ Express.js + MongoDB server with Google OAuth authentication and role-based acce
 ## Models
 
 - **Student** - User profiles with roles (student/admin)
-- **EnrolledStudent** - Course enrollments
+- **EnrolledStudent** - Students who have successfully paid.
 - **Menu** - Menu items management
 
 ## Setup
@@ -47,5 +47,6 @@ npm start
 ## Authentication
 
 All routes require `Authorization: Bearer <google-id-token>` header. Server verifies token with Google on each request (stateless).
+
 
 
