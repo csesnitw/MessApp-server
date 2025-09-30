@@ -1,0 +1,14 @@
+const mongoose = require("mongoose");
+
+const studentSchema = new mongoose.Schema({
+  name: String,
+  email: { type: String, required: true, unique: true },
+  rollNo: { type: String, required: true, unique: true },
+  mess: String,
+  hasUploadedPhoto: { type: Boolean, default: false },
+  photoUrl: { type: String, default: "" },
+  redeemedToken: { type: Boolean, default: false }, 
+  createdAt: { type: Date, default: Date.now },
+});
+
+module.exports = mongoose.model("Student", studentSchema);
