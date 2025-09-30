@@ -1,3 +1,1 @@
-# MessApp-server
-
-Backend for the MessApp
+# Mess_Management_App(Backend)
