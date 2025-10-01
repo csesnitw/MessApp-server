@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 
 const studentSchema = new mongoose.Schema({
   name: String,
-  email: { type: String, required: true, unique: true },
   rollNo: { type: String, required: true, unique: true },
   mess: String,
   hasUploadedPhoto: { type: Boolean, default: false },

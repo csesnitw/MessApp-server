@@ -64,11 +64,12 @@ router.post("/login", async (req, res) => {
         message: "Only @student.nitw.ac.in emails are allowed",
       });
     }
-
+    const emailPrefix = payload.email.split("@")[0]; 
+    const rollNo = emailPrefix.substring(2);
     console.log("Looking up student in database...");
-    const student = await Student.findOne({ email: payload.email }).lean();
+    const student = await Student.findOne({ rollNo }).lean();
     if (!student) {
-      console.log("Student not found in database:", payload.email);
+      console.log("Student not found in database:", rollNo);
       return res.status(404).json({
         message: "Student not found in the system. Please contact admin.",
       });
@@ -127,8 +128,13 @@ router.post("/upload-photo", async (req, res) => {
         error: verifyError.message,
       });
     }
-
-    const student = await Student.findOne({ email });
+    const payload = ticket.getPayload();
+    const emailPrefix = payload.email.split("@")[0]; 
+    const rollNo = emailPrefix.substring(2);
+    console.log(rollNo);
+    const student = await Student.findOne({ rollNo });
+    const students = await Student.find({}).lean(); // fetch all docs
+    console.log("All students:", students);
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
@@ -182,11 +188,11 @@ router.get("/details", async (req, res) => {
     }
 
     const payload = ticket.getPayload();
-    const email = payload.email;
-
-    const student = await Student.findOne({ email });
+    const emailPrefix = payload.email.split("@")[0]; 
+    const rollNo = emailPrefix.substring(2);
+    const student = await Student.findOne({rollNo});
     if (!student) {
-      console.log("Student not found:", email);
+      console.log("Student not found:", rollNo);
       return res.status(404).json({ message: "Student not found" });
     }
 
@@ -194,8 +200,8 @@ router.get("/details", async (req, res) => {
       message: "Student details fetched successfully",
       student: {
         name: student.name || payload.name || "",
-        email: student.email,
         rollNo:student.rollNo||"",
+        email:payload.email,
         photoUrl: student.photoUrl || payload.picture || "",
         hasUploadedPhoto: !!student.hasUploadedPhoto,
         redeemedToken: !!student.redeemedToken,
@@ -250,8 +256,10 @@ router.post("/sync-token", async (req, res) => {
     }
 
     console.log("Token sync request for:", email, "Token:", redeemedToken);
+    const emailPrefix = payload.email.split("@")[0]; 
+    const rollNo = emailPrefix.substring(2);
 
-    const student = await Student.findOne({ email });
+    const student = await Student.findOne({ rollNo });
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
