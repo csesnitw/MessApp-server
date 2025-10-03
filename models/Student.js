@@ -6,7 +6,10 @@ const studentSchema = new mongoose.Schema({
   mess: String,
   hasUploadedPhoto: { type: Boolean, default: false },
   photoUrl: { type: String, default: "" },
-  redeemedToken: { type: Boolean, default: false }, 
+  specialToken: {
+    active: { type: Boolean, default: false },
+    redeemed: { type: Boolean, default: false },
+  },
   createdAt: { type: Date, default: Date.now },
 });
 

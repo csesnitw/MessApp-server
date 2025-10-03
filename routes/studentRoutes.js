@@ -2,314 +2,199 @@ const express = require("express");
 const router = express.Router();
 const { OAuth2Client } = require("google-auth-library");
 const Student = require("../models/Student");
-const Menu = require("../models/Menu");
+const Menu = require("../models/menu");
+const UpdatedMenu = require("../models/updatedMenu");
 
-// Google OAuth client - Make sure GOOGLE_CLIENT_ID is set in environment
+// Google OAuth client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// Debug middleware to log requests
-router.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`, req.body);
-  next();
-});
+// --------------------
+// Helper: Verify Google Token
+// --------------------
+async function verifyGoogleToken(authHeader, res) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ message: "Authorization header missing or invalid" });
+    return null;
+  }
 
-// Check if admin has initialized Excel
+  const token = authHeader.split(" ")[1];
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    return ticket.getPayload();
+  } catch (err) {
+    res.status(401).json({ message: "Invalid Google token", error: err.message });
+    return null;
+  }
+}
+
+// --------------------
+// Check if admin initialized students
+// --------------------
 router.get("/check-init", async (req, res) => {
   try {
     const studentCount = await Student.countDocuments();
-    console.log(`Student count: ${studentCount}`);
     res.json({ initialized: studentCount > 0 });
   } catch (err) {
-    console.error("Check init error:", err);
-    res.status(500).json({
-      message: "Failed to check initialization",
-      error: err.message,
-    });
+    res.status(500).json({ message: "Failed to check initialization", error: err.message });
   }
 });
 
-// Student login using Google OAuth
+// --------------------
+// Student login (Google OAuth)
+// --------------------
 router.post("/login", async (req, res) => {
   try {
-    console.log("Login request received:", req.body);
-
     const { tokenId } = req.body;
-    if (!tokenId) {
-      console.log("No tokenId provided");
-      return res.status(400).json({ message: "tokenId is required" });
-    }
+    if (!tokenId) return res.status(400).json({ message: "tokenId is required" });
 
-    console.log("Verifying Google ID token...");
-
-    let ticket;
-    try {
-      ticket = await client.verifyIdToken({
-        idToken: tokenId,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-    } catch (verifyError) {
-      console.error("Token verification failed:", verifyError);
-      return res.status(401).json({
-        message: "Invalid Google token",
-        error: verifyError.message,
-      });
-    }
-
+    const ticket = await client.verifyIdToken({ idToken: tokenId, audience: process.env.GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
-    console.log("Token verified for email:", payload.email);
 
     if (!payload.email.endsWith("@student.nitw.ac.in")) {
-      console.log("Invalid email domain:", payload.email);
-      return res.status(400).json({
-        message: "Only @student.nitw.ac.in emails are allowed",
-      });
-    }
-    const emailPrefix = payload.email.split("@")[0]; 
-    const rollNo = emailPrefix.substring(2);
-    console.log("Looking up student in database...");
-    const student = await Student.findOne({ rollNo }).lean();
-    if (!student) {
-      console.log("Student not found in database:", rollNo);
-      return res.status(404).json({
-        message: "Student not found in the system. Please contact admin.",
-      });
+      return res.status(400).json({ message: "Only @student.nitw.ac.in emails are allowed" });
     }
 
-    console.log("Login successful for:", payload.email);
+    const rollNo = payload.email.split("@")[0].substring(2);
+    const student = await Student.findOne({ rollNo }).lean();
+    if (!student) return res.status(404).json({ message: "Student not found. Contact admin." });
 
     res.json({
       message: "Login successful",
       student: {
         name: student.name || payload.name,
-        email: student.email,
+        email: payload.email,
         photoUrl: student.photoUrl || payload.picture || "",
         hasUploadedPhoto: student.hasUploadedPhoto || false,
-        redeemedToken: student.redeemedToken || null,
+        specialToken: student.specialToken || { active: false, redeemed: false },
+        mess: student.mess || "",
       },
     });
   } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({
-      message: "Internal server error",
-      error: process.env.NODE_ENV === "development" ? err.message : "Something went wrong",
-    });
+    res.status(500).json({ message: "Login failed", error: err.message });
   }
 });
 
-// Student uploads photo
+// --------------------
+// Upload student photo
+// --------------------
 router.post("/upload-photo", async (req, res) => {
   try {
     const { email, photoBase64 } = req.body;
+    if (!email || !photoBase64) return res.status(400).json({ message: "Email and photoBase64 required" });
 
-    if (!email || !photoBase64) {
-      return res.status(400).json({ message: "Email and photoBase64 are required" });
-    }
+    const payload = await verifyGoogleToken(req.headers.authorization, res);
+    if (!payload) return;
 
-    console.log("Photo upload request for:", email);
-    console.log("Verifying Google ID token...");
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Authorization header missing or invalid" });
-    }
-
-    const tokenIds = authHeader.split(" ")[1];
-
-    let ticket;
-    try {
-      ticket = await client.verifyIdToken({
-        idToken: tokenIds,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-    } catch (verifyError) {
-      console.error("Token verification failed:", verifyError);
-      return res.status(401).json({
-        message: "Invalid Google token",
-        error: verifyError.message,
-      });
-    }
-    const payload = ticket.getPayload();
-    const emailPrefix = payload.email.split("@")[0]; 
-    const rollNo = emailPrefix.substring(2);
-    console.log(rollNo);
+    const rollNo = payload.email.split("@")[0].substring(2);
     const student = await Student.findOne({ rollNo });
-    const students = await Student.find({}).lean(); // fetch all docs
-    console.log("All students:", students);
-    if (!student) {
-      return res.status(404).json({ message: "Student not found" });
-    }
-
+    if (!student) return res.status(404).json({ message: "Student not found" });
 
     student.photoUrl = photoBase64;
     student.hasUploadedPhoto = true;
     await student.save();
 
-    console.log("Photo uploaded successfully for:", email);
-
     res.json({
       message: "Photo uploaded successfully",
       student: {
         name: student.name,
-        email: student.email,
+        email: payload.email,
         photoUrl: student.photoUrl,
         hasUploadedPhoto: student.hasUploadedPhoto,
-        redeemedToken: student.redeemedToken || null,
+        specialToken: student.specialToken,
+        mess: student.mess,
       },
     });
   } catch (err) {
-    console.error("Photo upload error:", err);
-    res.status(500).json({ message: "Failed to upload photo", error: err.message });
+    res.status(500).json({ message: "Photo upload failed", error: err.message });
   }
 });
 
-// Fetch full student details
+// --------------------
+// Fetch student details
+// --------------------
 router.get("/details", async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
+    const payload = await verifyGoogleToken(req.headers.authorization, res);
+    if (!payload) return;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Authorization header missing or invalid" });
-    }
+    const rollNo = payload.email.split("@")[0].substring(2);
+    const student = await Student.findOne({ rollNo });
+    if (!student) return res.status(404).json({ message: "Student not found" });
 
-    const tokenId = authHeader.split(" ")[1];
-
-    let ticket;
-    try {
-      ticket = await client.verifyIdToken({
-        idToken: tokenId,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-    } catch (verifyError) {
-      console.error("Token verification failed:", verifyError);
-      return res.status(401).json({
-        message: "Invalid Google token",
-        error: verifyError.message,
-      });
-    }
-
-    const payload = ticket.getPayload();
-    const emailPrefix = payload.email.split("@")[0]; 
-    const rollNo = emailPrefix.substring(2);
-    const student = await Student.findOne({rollNo});
-    if (!student) {
-      console.log("Student not found:", rollNo);
-      return res.status(404).json({ message: "Student not found" });
-    }
-
-    return res.json({
-      message: "Student details fetched successfully",
+    res.json({
+      message: "Student details fetched",
       student: {
-        name: student.name || payload.name || "",
-        rollNo:student.rollNo||"",
-        email:payload.email,
+        name: student.name || payload.name,
+        rollNo: student.rollNo,
+        email: payload.email,
         photoUrl: student.photoUrl || payload.picture || "",
-        hasUploadedPhoto: !!student.hasUploadedPhoto,
-        redeemedToken: !!student.redeemedToken,
-        mess:student.mess||"Z"
+        hasUploadedPhoto: student.hasUploadedPhoto,
+        specialToken: student.specialToken,
+        mess: student.mess || "",
       },
     });
   } catch (err) {
-    console.error("Student details fetch error:", err);
-    return res.status(500).json({
-      message: "Failed to fetch student details",
-      error: err.message,
-    });
+    res.status(500).json({ message: "Failed to fetch student details", error: err.message });
   }
 });
 
-
-
-// Sync token from student device
+// --------------------
+// Sync token (student side)
 router.post("/sync-token", async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Authorization header missing or invalid" });
-    }
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
 
-    const tokenId = authHeader.split(" ")[1];
+    const payload = await verifyGoogleToken(req.headers.authorization, res);
+    if (!payload) return;
 
-    let ticket;
-    try {
-      ticket = await client.verifyIdToken({
-        idToken: tokenId,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-    } catch (verifyError) {
-      console.error("Token verification failed:", verifyError);
-      return res.status(401).json({
-        message: "Invalid Google token",
-        error: verifyError.message,
-      });
-    }
+    if (payload.email !== email) return res.status(403).json({ message: "Email mismatch" });
 
-    const payload = ticket.getPayload();
-    const emailFromToken = payload.email;
-
-    const { email, redeemedToken } = req.body;
-    if (!email || redeemedToken === undefined) {
-      return res.status(400).json({ message: "Email and redeemedToken are required" });
-    }
-
-    if (email !== emailFromToken) {
-      return res.status(403).json({ message: "Email mismatch with token" });
-    }
-
-    console.log("Token sync request for:", email, "Token:", redeemedToken);
-    const emailPrefix = payload.email.split("@")[0]; 
-    const rollNo = emailPrefix.substring(2);
-
+    const rollNo = payload.email.split("@")[0].substring(2);
     const student = await Student.findOne({ rollNo });
-    if (!student) {
-      return res.status(404).json({ message: "Student not found" });
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    if (student.specialToken.active) {
+      student.specialToken.active = false;
+      student.specialToken.redeemed = true;
+      await student.save();
     }
 
-    student.redeemedToken = redeemedToken;
-    await student.save();
-
-    console.log("Token synced successfully for:", email);
-    res.json({ message: "Token synced successfully" });
+    res.json({ message: "Token synced successfully", specialToken: student.specialToken });
   } catch (err) {
-    console.error("Token sync error:", err);
     res.status(500).json({ message: "Failed to sync token", error: err.message });
   }
 });
 
+
+// Fetch today's menu
 router.get("/menu", async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Authorization header missing or invalid" });
+    const payload = await verifyGoogleToken(req.headers.authorization, res);
+    if (!payload) return;
+
+    const studentRollNo = payload.email.split("@")[0].substring(2);
+    const student = await Student.findOne({ rollNo: studentRollNo }).lean();
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    const mess = student.mess; 
+
+    const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    const today = days[new Date().getDay()];
+
+    // Check override for this mess
+    let menu = await UpdatedMenu.findOne({ dayOfWeek: today, messName: mess }).lean();
+
+    if (!menu) {
+      menu = await Menu.findOne({ dayOfWeek: today, messName: mess }).lean();
     }
 
-    const tokenId = authHeader.split(" ")[1];
+    res.json(menu || { dayOfWeek: today, breakfast: [], lunch: [], dinner: [] });
 
-    let ticket;
-    try {
-      ticket = await client.verifyIdToken({
-        idToken: tokenId,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-    } catch (verifyError) {
-      console.error("Token verification failed:", verifyError);
-      return res.status(401).json({
-        message: "Invalid Google token",
-        error: verifyError.message,
-      });
-    }
-
-    const payload = ticket.getPayload();
-    console.log("Fetching menu for student:", payload.email);
-
-    const today = new Date().toLocaleDateString("en-US", { weekday: "long" });
-    console.log("Fetching menu for:", today);
-
-    const menu = await Menu.findOne({ dayOfWeek: today }).lean();
-    res.json(
-      menu || { dayOfWeek: today, breakfast: [], lunch: [], dinner: [] }
-    );
   } catch (err) {
-    console.error("Menu fetch error:", err);
     res.status(500).json({ message: "Failed to fetch menu", error: err.message });
   }
 });

@@ -11,8 +11,10 @@ app.use(cors());
 
 
 // Routes
+require("./models/menu");
+require("./models/updatedMenu");
 const adminRoutes = require("./routes/adminRoutes");
-const studentRoutes = require("./routes/studentroutes");
+const studentRoutes = require("./routes/studentRoutes");
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/student", studentRoutes);
@@ -21,9 +23,10 @@ app.use("/api/student", studentRoutes);
 app.get("/", (req, res) => res.send("Backend is running"));
 
 // Connect to DB and start server
+console.log(process.env.MONGO_URI);
 mongoose
   .connect(process.env.MONGO_URI || "mongodb://localhost:27017/mess")
   .then(() => {
-    app.listen(5002, () => console.log("Server running on port 5002"));
+    app.listen(5000, () => console.log("Server running on port 5000"));
   })
   .catch((err) => console.log(err));
