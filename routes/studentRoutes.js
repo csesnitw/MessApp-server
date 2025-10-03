@@ -169,28 +169,35 @@ router.post("/sync-token", async (req, res) => {
   }
 });
 
-// --------------------
+
 // Fetch today's menu
 router.get("/menu", async (req, res) => {
   try {
-    // Verify student token
     const payload = await verifyGoogleToken(req.headers.authorization, res);
     if (!payload) return;
+
+    const studentRollNo = payload.email.split("@")[0].substring(2);
+    const student = await Student.findOne({ rollNo: studentRollNo }).lean();
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    const mess = student.mess; 
 
     const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
     const today = days[new Date().getDay()];
 
-    // Check override
-    let menu = await UpdatedMenu.findOne({ dayOfWeek: today }).lean();
+    // Check override for this mess
+    let menu = await UpdatedMenu.findOne({ dayOfWeek: today, messName: mess }).lean();
 
     if (!menu) {
-      menu = await Menu.findOne({ dayOfWeek: today }).lean();
+      menu = await Menu.findOne({ dayOfWeek: today, messName: mess }).lean();
     }
 
     res.json(menu || { dayOfWeek: today, breakfast: [], lunch: [], dinner: [] });
+
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch menu", error: err.message });
   }
 });
+
 
 module.exports = router;

@@ -107,28 +107,70 @@ router.delete("/students/clear", verifyAdmin, async (req, res) => {
 
 
 
-router.post("/menu", async (req, res) => {
+//Add / Update Week Menu
+router.put("/menu/upload-week-csv", verifyAdmin, upload.single("file"), async (req, res) => {
   try {
-    const weekMenu = req.body; // array of 7 days
-    if (!Array.isArray(weekMenu) || weekMenu.length !== 7)
-      return res.status(400).json({ message: "Provide 7 days menu" });
+    const messName = req.user.messName;
 
-    //clear existing menu
-    await Menu.deleteMany({});
-    const createdMenu = await Menu.insertMany(weekMenu);
-    res.json({ message: "Week menu added", data: createdMenu });
+    if (!req.file) return res.status(400).json({ message: "No CSV file uploaded" });
+
+    const results = [];
+
+    fs.createReadStream(req.file.path)
+      .pipe(csv())
+      .on("data", (row) => {
+        // Expect CSV columns: dayOfWeek, breakfast, lunch, dinner
+        // Meals can be comma-separated in CSV
+        results.push({
+          dayOfWeek: row.dayOfWeek,
+          breakfast: row.breakfast ? row.breakfast.split(",").map(m => m.trim()) : [],
+          lunch: row.lunch ? row.lunch.split(",").map(m => m.trim()) : [],
+          dinner: row.dinner ? row.dinner.split(",").map(m => m.trim()) : [],
+          messName
+        });
+      })
+      .on("end", async () => {
+        try {
+          const updatedDays = [];
+
+          for (let day of results) {
+            const { dayOfWeek, breakfast, lunch, dinner } = day;
+
+            let menuDay = await Menu.findOne({ dayOfWeek, messName });
+            if (menuDay) {
+              menuDay.breakfast = breakfast;
+              menuDay.lunch = lunch;
+              menuDay.dinner = dinner;
+              menuDay.updatedAt = Date.now();
+              await menuDay.save();
+            } else {
+              menuDay = new Menu({ dayOfWeek, breakfast, lunch, dinner, messName });
+              await menuDay.save();
+            }
+
+            updatedDays.push(menuDay);
+          }
+
+          fs.unlinkSync(req.file.path); // clean up temp file
+          res.json({ message: "Week menu uploaded successfully", data: updatedDays });
+        } catch (err) {
+          res.status(500).json({ message: "Failed to save menu", error: err.message });
+        }
+      });
+
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
-//Update / Override Single Day
-router.put("/menu/update/:day", async (req, res) => {
+// ================= Override Single Day =================
+router.put("/menu/update/:day", verifyAdmin, async (req, res) => {
   try {
     const dayOfWeek = req.params.day;
     const { breakfast, lunch, dinner } = req.body;
+    const messName = req.user.messName;
 
-    let updatedDay = await UpdatedMenu.findOne({ dayOfWeek });
+    let updatedDay = await UpdatedMenu.findOne({ dayOfWeek, messName });
 
     if (updatedDay) {
       updatedDay.breakfast = breakfast || updatedDay.breakfast;
@@ -137,59 +179,31 @@ router.put("/menu/update/:day", async (req, res) => {
       updatedDay.updatedAt = Date.now();
       await updatedDay.save();
     } else {
-      updatedDay = new UpdatedMenu({ dayOfWeek, breakfast, lunch, dinner });
+      updatedDay = new UpdatedMenu({ dayOfWeek, breakfast, lunch, dinner, messName });
       await updatedDay.save();
     }
 
-    res.json({ message: `Menu for ${dayOfWeek} updated`, data: updatedDay });
+    res.json({ message: `Override for ${dayOfWeek} set successfully`, data: updatedDay });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
-// Update / Override Whole Week
-router.put("/menu/update-week", async (req, res) => {
-  try {
-    const weekUpdates = req.body; // array of 7 day objects
-
-    if (!Array.isArray(weekUpdates) || weekUpdates.length !== 7)
-      return res.status(400).json({ message: "Provide 7 days menu" });
-
-    const updatedDays = [];
-    for (let day of weekUpdates) {
-      const { dayOfWeek, breakfast, lunch, dinner } = day;
-
-      let updatedDay = await UpdatedMenu.findOne({ dayOfWeek });
-      if (updatedDay) {
-        updatedDay.breakfast = breakfast || updatedDay.breakfast;
-        updatedDay.lunch = lunch || updatedDay.lunch;
-        updatedDay.dinner = dinner || updatedDay.dinner;
-        updatedDay.updatedAt = Date.now();
-        await updatedDay.save();
-      } else {
-        updatedDay = new UpdatedMenu({ dayOfWeek, breakfast, lunch, dinner });
-        await updatedDay.save();
-      }
-      updatedDays.push(updatedDay);
-    }
-
-    res.json({ message: "Week updated successfully", data: updatedDays });
-  } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-});
-
-//Delete Override for a Day
-router.delete("/menu/update/:day", async (req, res) => {
+// ================= Delete Override for a Day =================
+router.delete("/menu/update/:day", verifyAdmin, async (req, res) => {
   try {
     const dayOfWeek = req.params.day;
-    const deleted = await UpdatedMenu.findOneAndDelete({ dayOfWeek });
+    const messName = req.user.messName;
+
+    const deleted = await UpdatedMenu.findOneAndDelete({ dayOfWeek, messName });
     if (!deleted) return res.status(404).json({ message: "No override found" });
+
     res.json({ message: `Override for ${dayOfWeek} deleted`, data: deleted });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
 
 
 

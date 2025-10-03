@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
 const updatedMenuSchema = new mongoose.Schema({
+  messName: { type: String, required: true },
   dayOfWeek: { 
     type: String, 
     required: true,
