@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 function verifyAdmin(req, res, next) {
   const authHeader = req.headers["authorization"]; 
   const token = authHeader?.split(" ")[1]; 
-
+  console.log(token);
   if (!token) return res.status(401).json({ message: "Access denied" });
 
   try {

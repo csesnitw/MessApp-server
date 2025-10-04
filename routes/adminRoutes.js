@@ -33,12 +33,13 @@ const authMiddleware = (req, res, next) => {
 router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
-
     const admin = await Admin.findOne({ username });
-    if (!admin) return res.status(400).json({ message: "Invalid credentials" });
-
+    if (!admin) return res.status(400).json({ message: "Invalid credentials1" });
+    console.log(username);
+    console.log(password);
+    console.log(admin.password);
     const isMatch = await bcrypt.compare(password, admin.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+    if (!isMatch) return res.status(401).json({ message: "Invalid credentials2" });
 
     const token = jwt.sign(
       { id: admin._id, role: admin.role, messName: admin.messName },
@@ -60,10 +61,8 @@ router.post("/login", async (req, res) => {
 // Upload CSV 
 router.post("/upload-csv", authMiddleware, upload.single("file"), async (req, res) => {
   try {
+    console.log("hi");
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    
-
-
     const results = [];
     fs.createReadStream(req.file.path)
       .pipe(csv())
@@ -170,8 +169,9 @@ router.put("/menu/update/:day", verifyAdmin, async (req, res) => {
     const { breakfast, lunch, dinner } = req.body;
     const messName = req.user.messName;
 
-    let updatedDay = await UpdatedMenu.findOne({ dayOfWeek, messName });
-
+    let updatedDay = await Menu.findOne({ dayOfWeek, messName });
+    console.log(dayOfWeek);
+    console.log(messName);
     if (updatedDay) {
       updatedDay.breakfast = breakfast || updatedDay.breakfast;
       updatedDay.lunch = lunch || updatedDay.lunch;
@@ -179,7 +179,7 @@ router.put("/menu/update/:day", verifyAdmin, async (req, res) => {
       updatedDay.updatedAt = Date.now();
       await updatedDay.save();
     } else {
-      updatedDay = new UpdatedMenu({ dayOfWeek, breakfast, lunch, dinner, messName });
+      updatedDay = new Menu({ dayOfWeek, breakfast, lunch, dinner, messName });
       await updatedDay.save();
     }
 
@@ -194,7 +194,8 @@ router.delete("/menu/update/:day", verifyAdmin, async (req, res) => {
   try {
     const dayOfWeek = req.params.day;
     const messName = req.user.messName;
-
+    console.log(dayOfWeek);
+    console.log(messName);
     const deleted = await UpdatedMenu.findOneAndDelete({ dayOfWeek, messName });
     if (!deleted) return res.status(404).json({ message: "No override found" });
 

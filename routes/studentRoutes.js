@@ -143,6 +143,7 @@ router.get("/details", async (req, res) => {
 
 // --------------------
 // Sync token (student side)
+// --------------------
 router.post("/sync-token", async (req, res) => {
   try {
     const { email } = req.body;
