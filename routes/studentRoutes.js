@@ -187,11 +187,7 @@ router.get("/menu", async (req, res) => {
     const today = days[new Date().getDay()];
 
     // Check override for this mess
-    let menu = await UpdatedMenu.findOne({ dayOfWeek: today, messName: mess }).lean();
-
-    if (!menu) {
-      menu = await Menu.findOne({ dayOfWeek: today, messName: mess }).lean();
-    }
+    let menu= await Menu.findOne({ dayOfWeek: today, messName: mess }).lean();
 
     res.json(menu || { dayOfWeek: today, breakfast: [], lunch: [], dinner: [] });
 
