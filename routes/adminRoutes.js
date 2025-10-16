@@ -6,6 +6,7 @@ const csv = require("csv-parser");
 const fs = require("fs");
 const Menu = require("../models/menu"); // usual week menu
 const UpdatedMenu = require("../models/updatedMenu"); // overrides
+const tokenSession = require("../models/TokenSession");
 const { verifyAdmin } = require("../middleware/adminAuth"); 
 
 const Admin = require("../models/admin");
@@ -205,10 +206,7 @@ router.delete("/menu/update/:day", verifyAdmin, async (req, res) => {
   }
 });
 
-
-
-
-router.post("/special-dinner/redeem", verifyAdmin, async (req, res) => {
+router.post("/special-dinner/start", verifyAdmin, async (req, res) => {
   try {
     // Admin's mess from verified token
     const adminMess = req.user.messName;
@@ -228,14 +226,97 @@ router.post("/special-dinner/redeem", verifyAdmin, async (req, res) => {
       student.specialToken.redeemed = false; 
       await student.save();
     }
+    let token = await tokenSession.findOne({ mess: adminMess });
+    if (!token) {
+      token = new tokenSession({ mess: adminMess, active: false });
+    } else {
+      token.active = true;
+    }
+    await token.save();
 
     res.json({
-      message: `Special tokens redeemed for ${students.length} students in ${adminMess}`,
+      message: `Special tokens started for ${students.length} students in ${adminMess}`,
     });
   } catch (err) {
     res
       .status(500)
-      .json({ message: "Failed to redeem special tokens", error: err.message });
+      .json({ message: "Failed to startx special tokens", error: err.message });
+  }
+});
+router.post("/special-dinner/end", verifyAdmin, async (req, res) => {
+  try {
+    // Admin's mess from verified token
+    const adminMess = req.user.messName;
+
+    // Find all students in this mess
+    const students = await Student.find({ mess: adminMess });
+
+     if (!students.length)
+      return res.status(404).json({
+        message: "No students found in your mess",
+        mess: adminMess,  
+      });
+
+    // Redeem tokens
+    for (let student of students) {
+      student.specialToken.active = false;   // Green in frontend
+      student.specialToken.redeemed = false; 
+      await student.save();
+    }
+    let token = await tokenSession.findOne({ mess: adminMess });
+    if (!token) {
+      token = new tokenSession({ mess: adminMess, active: true });
+    } else {
+      token.active = false;
+    }
+    await token.save();
+
+    res.json({
+      message: `Special tokens ended for ${students.length} students in ${adminMess}`,
+    });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Failed to end special tokens", error: err.message });
+  }
+});
+
+router.get("/tokenSession", verifyAdmin, async (req, res) => {
+  try {
+    const adminMess = req.user.messName;
+    let token = await tokenSession.findOne({ mess: adminMess });
+
+    // If no token record exists, assume inactive session
+    if (!token) {
+      token = new tokenSession({ mess: adminMess, active: false });
+      await token.save();
+    }
+
+    res.json({
+      message: `Token session status for ${adminMess}`,
+      active: token.active,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: "Failed to fetch token session status",
+      error: err.message,
+    });
+  }
+});
+
+router.get("/menu",verifyAdmin, async (req, res) => {
+  try {
+    const adminMess = req.user.messName;
+    const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    const today = days[new Date().getDay()];
+
+    // Check override for this mess
+    let menu= await Menu.findOne({ dayOfWeek: today, messName: adminMess }).lean();
+
+    res.json(menu || { dayOfWeek: today, breakfast: [], lunch: [], dinner: [] });
+
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch menu", error: err.message });
   }
 });
 
